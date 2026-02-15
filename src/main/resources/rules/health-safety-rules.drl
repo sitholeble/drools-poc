@@ -1,0 +1,148 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.BookingRequest
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.GymClass
+import com.dijkstrack.drools.model.GymClass.ClassCategory
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
+
+// Rule: Age restriction for high-intensity classes
+// Members under 16 cannot book advanced cardio or strength classes
+rule "Age Restriction for High-Intensity Classes"
+    salience 100
+    when
+        $request : BookingRequest()
+        $member : Member()
+        $class : GymClass(category == ClassCategory.CARDIO || category == ClassCategory.STRENGTH,
+                         difficulty == GymClass.DifficultyLevel.ADVANCED)
+        // Assuming we add age field to Member model
+        // eval($member.getAge() != null && $member.getAge() < 16)
+    then
+        // $request.getBooking().reject("High-intensity advanced classes require members to be 16 years or older.");
+        // $request.setValid(false);
+        System.out.println("Rule fired: Age Restriction for High-Intensity Classes");
+end
+
+// Rule: Medical clearance required for certain classes
+// Members with medical restrictions cannot book high-intensity classes
+rule "Medical Restriction Check"
+    salience 95
+    when
+        $request : BookingRequest()
+        $member : Member()
+        $class : GymClass(category == ClassCategory.CARDIO,
+                         difficulty == GymClass.DifficultyLevel.ADVANCED)
+        // Assuming we add hasMedicalRestrictions field
+        // eval($member.getHasMedicalRestrictions() == true)
+    then
+        // $request.getBooking().reject("This high-intensity class requires medical clearance. " +
+        //                             "Please consult with a doctor before booking.");
+        // $request.setValid(false);
+        System.out.println("Rule fired: Medical Restriction Check");
+end
+
+// Rule: Pregnancy restriction for high-impact classes
+rule "Pregnancy Restriction for High-Impact Classes"
+    salience 90
+    when
+        $request : BookingRequest()
+        $member : Member()
+        $class : GymClass(category == ClassCategory.CARDIO || category == ClassCategory.SPORTS)
+        // Assuming we add isPregnant field
+        // eval($member.getIsPregnant() == true)
+    then
+        // $request.getBooking().reject("High-impact classes are not recommended during pregnancy. " +
+        //                             "Please consider low-impact alternatives like yoga or pilates.");
+        // $request.setValid(false);
+        System.out.println("Rule fired: Pregnancy Restriction for High-Impact Classes");
+end
+
+// Rule: Injury recovery - recommend low-impact classes
+rule "Recommend Low-Impact for Injury Recovery"
+    salience 85
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member()
+        $class : GymClass(category == ClassCategory.FLEXIBILITY || 
+                         category == ClassCategory.MIND_BODY)
+        // Assuming we add hasRecentInjury field
+        // eval($member.getHasRecentInjury() == true)
+    then
+        System.out.println("Rule fired: Recommend Low-Impact for Injury Recovery - " +
+                          $class.getClassName() + " is suitable for recovery");
+end
+
+// Rule: Rest day enforcement - prevent overbooking
+// Members cannot book more than 2 high-intensity classes on consecutive days
+rule "Rest Day Enforcement"
+    salience 80
+    when
+        $request : BookingRequest()
+        $member : Member()
+        $class : GymClass(category == ClassCategory.CARDIO || 
+                         category == ClassCategory.STRENGTH ||
+                         category == ClassCategory.SPORTS)
+        // Check if member has booked high-intensity class yesterday or today
+        eval($member.getBookings().stream()
+            .filter(b -> b.getStatus() == Booking.BookingStatus.CONFIRMED)
+            .anyMatch(b -> {
+                if (b.getClassDateTime() == null) return false;
+                long daysDiff = ChronoUnit.DAYS.between(
+                    b.getClassDateTime().toLocalDate(),
+                    $class.getClassDateTime().toLocalDate()
+                );
+                return daysDiff >= 0 && daysDiff <= 1;
+            }))
+    then
+        $request.setValidationMessage("Warning: You have a high-intensity class scheduled soon. " +
+                                     "Consider spacing out intense workouts for better recovery.");
+        System.out.println("Rule fired: Rest Day Enforcement - warning issued");
+end
+
+// Rule: Senior member safety - restrict high-intensity classes
+rule "Senior Member Safety Restrictions"
+    salience 75
+    when
+        $request : BookingRequest()
+        $member : Member(membershipType == Member.MembershipType.SENIOR)
+        $class : GymClass(category == ClassCategory.CARDIO,
+                         difficulty == GymClass.DifficultyLevel.ADVANCED)
+    then
+        $request.setValidationMessage("Advanced cardio classes may be too intense. " +
+                                     "Please consult with an instructor before attending.");
+        System.out.println("Rule fired: Senior Member Safety Restrictions");
+end
+
+// Rule: Minimum age for boxing/martial arts classes
+rule "Minimum Age for Combat Sports"
+    salience 70
+    when
+        $request : BookingRequest()
+        $member : Member()
+        $class : GymClass(category == ClassCategory.SPORTS)
+        // Assuming we add age field
+        // eval($member.getAge() != null && $member.getAge() < 12)
+    then
+        // $request.getBooking().reject("Combat sports classes require members to be 12 years or older.");
+        // $request.setValid(false);
+        System.out.println("Rule fired: Minimum Age for Combat Sports");
+end
+
+// Rule: Maximum class duration restriction
+// Prevent booking classes longer than 90 minutes for beginners
+rule "Maximum Duration for Beginners"
+    salience 65
+    when
+        $request : BookingRequest()
+        $member : Member(totalClassesAttended < 10 || totalClassesAttended == null)
+        $class : GymClass()
+        // Assuming we add duration field to GymClass
+        // eval($class.getDurationMinutes() > 90)
+    then
+        // $request.getBooking().reject("Classes longer than 90 minutes are not recommended for beginners. " +
+        //                     "Please start with shorter classes.");
+        // $request.setValid(false);
+        System.out.println("Rule fired: Maximum Duration for Beginners");
+end
+

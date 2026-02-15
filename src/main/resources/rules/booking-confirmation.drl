@@ -1,0 +1,39 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.BookingRequest
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.GymClass
+import com.dijkstrack.drools.model.Booking
+
+// Rule 13: Confirm booking if all validations pass
+rule "Confirm Booking"
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member()
+        $class : GymClass(hasSpace() == true)
+    then
+        $request.getBooking().confirm();
+        $request.getBooking().setFinalPrice($request.getBooking().getOriginalPrice() - 
+                                           ($request.getBooking().getDiscount() != null ? 
+                                            $request.getBooking().getDiscount() : 0.0));
+        $request.setValidationMessage("Booking confirmed successfully");
+        System.out.println("Rule fired: Confirm Booking - Member: " + $member.getMemberId() + 
+                          ", Class: " + $class.getClassName());
+end
+
+// Rule 14: VIP members get priority booking (can book even if class is almost full)
+rule "VIP Priority Booking"
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(membershipType == Member.MembershipType.VIP)
+        $class : GymClass(getAvailableSpots() == 1)
+    then
+        $request.getBooking().confirm();
+        $request.getBooking().setFinalPrice($request.getBooking().getOriginalPrice() - 
+                                           ($request.getBooking().getDiscount() != null ? 
+                                            $request.getBooking().getDiscount() : 0.0));
+        $request.setValidationMessage("VIP priority booking confirmed");
+        System.out.println("Rule fired: VIP Priority Booking");
+end
+
+

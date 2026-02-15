@@ -1,0 +1,133 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.BookingRequest
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.GymClass
+import com.dijkstrack.drools.model.Booking
+import java.time.temporal.ChronoUnit
+
+// Rule: Free cancellation if cancelled 24+ hours before class
+rule "Free Cancellation - 24 Hours Notice"
+    salience 100
+    when
+        $booking : Booking(status == Booking.BookingStatus.CONFIRMED)
+        eval(
+            $booking.getClassDateTime() != null &&
+            ChronoUnit.HOURS.between(
+                java.time.LocalDateTime.now(),
+                $booking.getClassDateTime()
+            ) >= 24
+        )
+    then
+        // Full refund for 24+ hour cancellation
+        System.out.println("Rule fired: Free Cancellation - 24 Hours Notice - Full refund");
+end
+
+// Rule: 50% refund if cancelled 12-24 hours before class
+rule "Partial Refund - 12 to 24 Hours Notice"
+    salience 90
+    when
+        $booking : Booking(status == Booking.BookingStatus.CONFIRMED)
+        eval(
+            $booking.getClassDateTime() != null &&
+            ChronoUnit.HOURS.between(
+                java.time.LocalDateTime.now(),
+                $booking.getClassDateTime()
+            ) >= 12 &&
+            ChronoUnit.HOURS.between(
+                java.time.LocalDateTime.now(),
+                $booking.getClassDateTime()
+            ) < 24
+        )
+    then
+        // 50% refund
+        System.out.println("Rule fired: Partial Refund - 12 to 24 Hours Notice - 50% refund");
+end
+
+// Rule: No refund if cancelled less than 12 hours before class
+rule "No Refund - Less Than 12 Hours"
+    salience 80
+    when
+        $booking : Booking(status == Booking.BookingStatus.CONFIRMED)
+        eval(
+            $booking.getClassDateTime() != null &&
+            ChronoUnit.HOURS.between(
+                java.time.LocalDateTime.now(),
+                $booking.getClassDateTime()
+            ) < 12
+        )
+    then
+        // No refund
+        System.out.println("Rule fired: No Refund - Less Than 12 Hours - No refund");
+end
+
+// Rule: VIP members get free cancellation up to 2 hours before class
+rule "VIP Extended Cancellation Window"
+    salience 95
+    when
+        $booking : Booking(status == Booking.BookingStatus.CONFIRMED)
+        // Would need member reference
+        eval(
+            $booking.getClassDateTime() != null &&
+            ChronoUnit.HOURS.between(
+                java.time.LocalDateTime.now(),
+                $booking.getClassDateTime()
+            ) >= 2
+        )
+    then
+        System.out.println("Rule fired: VIP Extended Cancellation Window - Free cancellation up to 2 hours");
+end
+
+// Rule: No-show penalty - charge full price if member doesn't show up
+rule "No-Show Penalty"
+    salience 70
+    when
+        $booking : Booking(status == Booking.BookingStatus.CONFIRMED)
+        eval(
+            $booking.getClassDateTime() != null &&
+            $booking.getClassDateTime().isBefore(java.time.LocalDateTime.now())
+        )
+        // Member didn't check in
+    then
+        System.out.println("Rule fired: No-Show Penalty - Full charge applied");
+end
+
+// Rule: Late cancellation fee for frequent cancellers
+rule "Late Cancellation Fee for Frequent Cancellers"
+    salience 60
+    when
+        $member : Member()
+        eval(
+            $member.getBookings().stream()
+                .filter(b -> b.getStatus() == Booking.BookingStatus.CANCELLED)
+                .filter(b -> {
+                    if (b.getClassDateTime() == null) return false;
+                    return ChronoUnit.DAYS.between(
+                        b.getClassDateTime().toLocalDate(),
+                        java.time.LocalDate.now()
+                    ) <= 30;
+                })
+                .count() >= 3
+        )
+    then
+        System.out.println("Rule fired: Late Cancellation Fee for Frequent Cancellers - " +
+                          "Member has 3+ cancellations in last 30 days");
+end
+
+// Rule: Auto-cancel if member doesn't check in 10 minutes after class starts
+rule "Auto-Cancel No-Show"
+    salience 50
+    when
+        $booking : Booking(status == Booking.BookingStatus.CONFIRMED)
+        eval(
+            $booking.getClassDateTime() != null &&
+            ChronoUnit.MINUTES.between(
+                $booking.getClassDateTime(),
+                java.time.LocalDateTime.now()
+            ) > 10
+        )
+    then
+        $booking.setStatus(Booking.BookingStatus.CANCELLED);
+        System.out.println("Rule fired: Auto-Cancel No-Show - Booking cancelled after 10 minutes");
+end
+

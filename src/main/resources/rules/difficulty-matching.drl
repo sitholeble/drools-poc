@@ -1,0 +1,83 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.BookingRequest
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.GymClass
+import com.dijkstrack.drools.model.GymClass.DifficultyLevel
+
+// Rule: Prevent beginners from booking advanced classes
+rule "Prevent Beginner from Advanced Classes"
+    salience 100
+    when
+        $request : BookingRequest()
+        $member : Member(totalClassesAttended < 10 || totalClassesAttended == null)
+        $class : GymClass(difficulty == DifficultyLevel.ADVANCED)
+    then
+        $request.getBooking().reject("Advanced classes require at least 10 completed classes. " +
+                                     "Please start with beginner or intermediate classes.");
+        $request.setValid(false);
+        $request.setValidationMessage("Difficulty level too high");
+        System.out.println("Rule fired: Prevent Beginner from Advanced Classes");
+end
+
+// Rule: Warn intermediate members about advanced classes
+rule "Warn Intermediate About Advanced Classes"
+    salience 90
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(totalClassesAttended >= 10 && totalClassesAttended < 30)
+        $class : GymClass(difficulty == DifficultyLevel.ADVANCED)
+    then
+        // Allow but add warning
+        $request.setValidationMessage("Warning: This is an advanced class. " +
+                                     "Consider attending more intermediate classes first.");
+        System.out.println("Rule fired: Warn Intermediate About Advanced Classes");
+end
+
+// Rule: Ensure proper progression path
+rule "Enforce Progression Path"
+    salience 80
+    when
+        $request : BookingRequest()
+        $member : Member(totalClassesAttended < 5 || totalClassesAttended == null)
+        $class : GymClass(difficulty == DifficultyLevel.INTERMEDIATE)
+    then
+        $request.getBooking().reject("Intermediate classes require at least 5 completed classes. " +
+                                     "Please start with beginner classes.");
+        $request.setValid(false);
+        $request.setValidationMessage("Progression requirement not met");
+        System.out.println("Rule fired: Enforce Progression Path");
+end
+
+// Rule: Auto-recommend difficulty based on attendance
+rule "Auto-Recommend Difficulty Level"
+    salience 70
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member()
+        $class : GymClass()
+        eval(
+            ($member.getTotalClassesAttended() == null || $member.getTotalClassesAttended() < 5) &&
+            ($class.getDifficulty() == DifficultyLevel.BEGINNER || 
+             $class.getDifficulty() == DifficultyLevel.ALL_LEVELS)
+        )
+    then
+        System.out.println("Rule fired: Auto-Recommend Difficulty Level - " +
+                          "Beginner level appropriate for member with " + 
+                          ($member.getTotalClassesAttended() != null ? $member.getTotalClassesAttended() : 0) + 
+                          " classes");
+end
+
+// Rule: Suggest difficulty upgrade for experienced members
+rule "Suggest Difficulty Upgrade"
+    salience 60
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(totalClassesAttended >= 30)
+        $class : GymClass(difficulty == DifficultyLevel.BEGINNER)
+    then
+        $request.setValidationMessage("Note: You may be ready for intermediate or advanced classes. " +
+                                     "Consider trying a higher difficulty level.");
+        System.out.println("Rule fired: Suggest Difficulty Upgrade");
+end
+

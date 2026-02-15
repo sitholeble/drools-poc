@@ -1,0 +1,49 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.BookingRequest
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.Booking
+
+// Rule: Referral bonus - give discount to member who referred new members
+rule "Referral Bonus Discount"
+    salience 50
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member()
+        // Assuming we add referredMembersCount field
+        // eval($member.getReferredMembersCount() != null && $member.getReferredMembersCount() >= 1)
+    then
+        // 5% discount per referral, max 20% discount
+        // double discount = Math.min($request.getBooking().getOriginalPrice() * 0.20,
+        //                            $request.getBooking().getOriginalPrice() * 0.05 * $member.getReferredMembersCount());
+        // $request.getBooking().applyDiscount(discount, "Referral bonus discount");
+        System.out.println("Rule fired: Referral Bonus Discount");
+end
+
+// Rule: New member referral credit - give credit to referrer when new member signs up
+rule "New Member Referral Credit"
+    salience 45
+    when
+        $member : Member(isNewMember == true)
+        // Assuming we add referredByMemberId field
+        // eval($member.getReferredByMemberId() != null)
+    then
+        // Give credit to referrer
+        System.out.println("Rule fired: New Member Referral Credit - " +
+                          "Credit applied to referrer for new member signup");
+end
+
+// Rule: Referral milestone bonus - extra discount for 5+ referrals
+rule "Referral Milestone Bonus"
+    salience 40
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member()
+        // eval($member.getReferredMembersCount() != null && $member.getReferredMembersCount() >= 5)
+    then
+        // Additional 10% discount on top of regular referral discount
+        // double discount = $request.getBooking().getOriginalPrice() * 0.10;
+        // $request.getBooking().applyDiscount(discount, "Referral milestone bonus (5+ referrals)");
+        System.out.println("Rule fired: Referral Milestone Bonus - 5+ referrals milestone reached");
+end
+

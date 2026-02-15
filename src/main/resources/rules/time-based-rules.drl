@@ -1,0 +1,122 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.BookingRequest
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.GymClass
+import com.dijkstrack.drools.model.Booking
+import java.time.LocalDateTime
+import java.time.DayOfWeek
+
+// Rule: Apply off-peak discount (classes before 9 AM or after 7 PM on weekdays)
+rule "Off-Peak Hour Discount"
+    salience 50
+    when
+        $request : BookingRequest(valid == true)
+        $class : GymClass()
+        eval(
+            ($class.getClassDateTime().getHour() < 9 || $class.getClassDateTime().getHour() >= 19) &&
+            $class.getClassDateTime().getDayOfWeek() != DayOfWeek.SATURDAY &&
+            $class.getClassDateTime().getDayOfWeek() != DayOfWeek.SUNDAY
+        )
+    then
+        double discount = $request.getBooking().getOriginalPrice() * 0.10;
+        $request.getBooking().applyDiscount(discount, "Off-peak hour discount (10%)");
+        System.out.println("Rule fired: Off-Peak Hour Discount - " + discount);
+end
+
+// Rule: Apply weekend premium (higher price for weekend classes)
+rule "Weekend Premium Pricing"
+    salience 40
+    when
+        $request : BookingRequest(valid == true)
+        $class : GymClass()
+        eval(
+            $class.getClassDateTime().getDayOfWeek() == DayOfWeek.SATURDAY ||
+            $class.getClassDateTime().getDayOfWeek() == DayOfWeek.SUNDAY
+        )
+    then
+        // Weekend classes are 15% more expensive
+        double premium = $request.getBooking().getOriginalPrice() * 0.15;
+        $request.getBooking().setOriginalPrice($request.getBooking().getOriginalPrice() + premium);
+        $request.getBooking().setFinalPrice($request.getBooking().getOriginalPrice());
+        System.out.println("Rule fired: Weekend Premium Pricing - added " + premium);
+end
+
+// Rule: Early bird discount (book 7+ days in advance)
+rule "Early Bird Discount"
+    salience 45
+    when
+        $request : BookingRequest(valid == true)
+        eval(
+            java.time.temporal.ChronoUnit.DAYS.between(
+                $request.getRequestDateTime().toLocalDate(),
+                $request.getGymClass().getClassDateTime().toLocalDate()
+            ) >= 7
+        )
+    then
+        double discount = $request.getBooking().getOriginalPrice() * 0.15;
+        $request.getBooking().applyDiscount(discount, "Early bird discount (15%) - booked 7+ days in advance");
+        System.out.println("Rule fired: Early Bird Discount - " + discount);
+end
+
+// Rule: Last minute booking surcharge (less than 4 hours before class)
+rule "Last Minute Booking Surcharge"
+    salience 35
+    when
+        $request : BookingRequest(valid == true)
+        eval(
+            java.time.temporal.ChronoUnit.HOURS.between(
+                $request.getRequestDateTime(),
+                $request.getGymClass().getClassDateTime()
+            ) < 4 &&
+            java.time.temporal.ChronoUnit.HOURS.between(
+                $request.getRequestDateTime(),
+                $request.getGymClass().getClassDateTime()
+            ) >= 2
+        )
+    then
+        double surcharge = $request.getBooking().getOriginalPrice() * 0.20;
+        $request.getBooking().setOriginalPrice($request.getBooking().getOriginalPrice() + surcharge);
+        $request.getBooking().setFinalPrice($request.getBooking().getOriginalPrice() - 
+                                           ($request.getBooking().getDiscount() != null ? 
+                                            $request.getBooking().getDiscount() : 0.0));
+        System.out.println("Rule fired: Last Minute Booking Surcharge - added " + surcharge);
+end
+
+// Rule: Peak hour restriction (limit bookings during peak hours 5-7 PM)
+rule "Peak Hour Capacity Restriction"
+    salience 30
+    when
+        $request : BookingRequest()
+        $class : GymClass()
+        eval(
+            $class.getClassDateTime().getHour() >= 17 &&
+            $class.getClassDateTime().getHour() < 19 &&
+            $class.getClassDateTime().getDayOfWeek() != DayOfWeek.SATURDAY &&
+            $class.getClassDateTime().getDayOfWeek() != DayOfWeek.SUNDAY
+        )
+        $member : Member(membershipType != Member.MembershipType.VIP && 
+                        membershipType != Member.MembershipType.PREMIUM)
+    then
+        // Non-premium members have lower priority during peak hours
+        if ($class.getAvailableSpots() <= 2) {
+            $request.getBooking().waitlist(0);
+            $request.setValidationMessage("Peak hour - added to waitlist. VIP/Premium members have priority.");
+            System.out.println("Rule fired: Peak Hour Capacity Restriction - waitlisted");
+        }
+end
+
+// Rule: Morning class bonus (encourage early morning attendance)
+rule "Morning Class Bonus Discount"
+    salience 25
+    when
+        $request : BookingRequest(valid == true)
+        $class : GymClass()
+        eval($class.getClassDateTime().getHour() >= 6 && 
+             $class.getClassDateTime().getHour() <= 8)
+    then
+        double discount = $request.getBooking().getOriginalPrice() * 0.05;
+        $request.getBooking().applyDiscount(discount, "Morning class bonus (5%)");
+        System.out.println("Rule fired: Morning Class Bonus Discount - " + discount);
+end
+

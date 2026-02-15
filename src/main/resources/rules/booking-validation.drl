@@ -1,0 +1,87 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.BookingRequest
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.GymClass
+import com.dijkstrack.drools.model.Booking
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
+
+// Rule 1: Reject booking if member's membership is expired
+rule "Membership Expired"
+    when
+        $request : BookingRequest(member.membershipEndDate != null)
+        eval($request.getMember().getMembershipEndDate().isBefore(LocalDate.now()))
+    then
+        $request.getBooking().reject("Membership has expired. Please renew your membership.");
+        $request.setValid(false);
+        $request.setValidationMessage("Membership expired");
+        System.out.println("Rule fired: Membership Expired for member " + $request.getMember().getMemberId());
+end
+
+// Rule 2: Reject booking if class is full
+rule "Class Full"
+    when
+        $request : BookingRequest(gymClass.isFull == true)
+    then
+        $request.getBooking().reject("Class is full. No available spots.");
+        $request.setValid(false);
+        $request.setValidationMessage("Class is full");
+        System.out.println("Rule fired: Class Full - " + $request.getGymClass().getClassName());
+end
+
+// Rule 3: Reject if member already booked this class
+rule "Duplicate Booking"
+    when
+        $request : BookingRequest()
+        $member : Member(memberId == $request.getMember().getMemberId())
+        exists Booking(memberId == $member.getMemberId(), 
+                      classId == $request.getGymClass().getClassId(),
+                      status == Booking.BookingStatus.CONFIRMED)
+    then
+        $request.getBooking().reject("You have already booked this class.");
+        $request.setValid(false);
+        $request.setValidationMessage("Duplicate booking");
+        System.out.println("Rule fired: Duplicate Booking");
+end
+
+// Rule 4: Reject if class requires premium membership and member doesn't have it
+rule "Premium Membership Required"
+    when
+        $request : BookingRequest(gymClass.requiresPremium == true)
+        $member : Member(membershipType != Member.MembershipType.PREMIUM && 
+                        membershipType != Member.MembershipType.VIP)
+    then
+        $request.getBooking().reject("This class requires a Premium or VIP membership.");
+        $request.setValid(false);
+        $request.setValidationMessage("Premium membership required");
+        System.out.println("Rule fired: Premium Membership Required");
+end
+
+// Rule 5: Reject if member has exceeded monthly class limit (for BASIC membership)
+rule "Monthly Class Limit Exceeded"
+    when
+        $request : BookingRequest()
+        $member : Member(membershipType == Member.MembershipType.BASIC,
+                        classesThisMonth >= 8)
+    then
+        $request.getBooking().reject("You have reached your monthly class limit (8 classes) for BASIC membership.");
+        $request.setValid(false);
+        $request.setValidationMessage("Monthly class limit exceeded");
+        System.out.println("Rule fired: Monthly Class Limit Exceeded");
+end
+
+// Rule 6: Reject if booking is too late (less than 2 hours before class)
+rule "Booking Too Late"
+    when
+        $request : BookingRequest()
+        eval(ChronoUnit.HOURS.between($request.getRequestDateTime(), 
+                                      $request.getGymClass().getClassDateTime()) < 2)
+    then
+        $request.getBooking().reject("Booking must be made at least 2 hours before class start time.");
+        $request.setValid(false);
+        $request.setValidationMessage("Booking too late");
+        System.out.println("Rule fired: Booking Too Late");
+end
+
+

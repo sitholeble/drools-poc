@@ -1,0 +1,101 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.BookingRequest
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.GymClass
+import com.dijkstrack.drools.model.Booking
+
+// Rule: Add to waitlist if class is full
+rule "Add to Waitlist When Full"
+    salience 50
+    when
+        $request : BookingRequest(valid == true)
+        $class : GymClass(isFull == true)
+        $member : Member()
+    then
+        // Calculate waitlist position (simplified - would need actual waitlist count)
+        int waitlistPosition = $class.getCurrentBookings() - $class.getMaxCapacity() + 1;
+        $request.getBooking().waitlist(waitlistPosition);
+        $request.setValidationMessage("Class is full. Added to waitlist at position " + waitlistPosition);
+        System.out.println("Rule fired: Add to Waitlist When Full - Position: " + waitlistPosition);
+end
+
+// Rule: VIP members bypass waitlist (can book even if 1 spot left)
+rule "VIP Bypass Waitlist"
+    salience 60
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(membershipType == Member.MembershipType.VIP)
+        $class : GymClass(getAvailableSpots() >= 1)
+    then
+        // VIP can still book if at least 1 spot available
+        $request.getBooking().confirm();
+        $request.setValidationMessage("VIP priority booking confirmed");
+        System.out.println("Rule fired: VIP Bypass Waitlist");
+end
+
+// Rule: Premium members get priority on waitlist
+rule "Premium Waitlist Priority"
+    salience 55
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(membershipType == Member.MembershipType.PREMIUM)
+        $class : GymClass(isFull == true)
+    then
+        // Premium members get better waitlist position
+        int waitlistPosition = Math.max(1, ($class.getCurrentBookings() - $class.getMaxCapacity()) / 2);
+        $request.getBooking().waitlist(waitlistPosition);
+        $request.setValidationMessage("Premium member - priority waitlist position: " + waitlistPosition);
+        System.out.println("Rule fired: Premium Waitlist Priority - Position: " + waitlistPosition);
+end
+
+// Rule: Auto-confirm waitlist when spot opens (would be triggered by cancellation)
+rule "Auto-Confirm Waitlist When Spot Opens"
+    salience 40
+    when
+        $request : BookingRequest(valid == true)
+        $class : GymClass(getAvailableSpots() > 0)
+        $member : Member()
+        // This would typically be triggered by a cancellation event
+    then
+        System.out.println("Rule fired: Auto-Confirm Waitlist When Spot Opens - " +
+                          "Spot available for " + $member.getMemberId());
+end
+
+// Rule: Waitlist expiration - remove from waitlist if not confirmed within 24 hours of class
+rule "Waitlist Expiration"
+    salience 30
+    when
+        $request : BookingRequest()
+        $booking : Booking(status == Booking.BookingStatus.WAITLISTED)
+        eval(
+            java.time.temporal.ChronoUnit.HOURS.between(
+                java.time.LocalDateTime.now(),
+                $booking.getClassDateTime()
+            ) < 24
+        )
+    then
+        $booking.setStatus(Booking.BookingStatus.REJECTED);
+        $booking.setRejectionReason("Waitlist expired - class starts within 24 hours");
+        System.out.println("Rule fired: Waitlist Expiration");
+end
+
+// Rule: Maximum waitlist positions per member (3 active waitlists)
+rule "Maximum Waitlist Positions"
+    salience 45
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member()
+        eval(
+            $member.getBookings().stream()
+                .filter(b -> b.getStatus() == Booking.BookingStatus.WAITLISTED)
+                .count() >= 3
+        )
+    then
+        $request.getBooking().reject("Maximum 3 active waitlist positions allowed. " +
+                                     "Please cancel an existing waitlist booking first.");
+        $request.setValid(false);
+        $request.setValidationMessage("Maximum waitlist positions exceeded");
+        System.out.println("Rule fired: Maximum Waitlist Positions");
+end
+

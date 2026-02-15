@@ -1,0 +1,123 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.BookingRequest
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.GymClass
+import com.dijkstrack.drools.model.Booking
+import com.dijkstrack.drools.model.GymClass.ClassCategory
+import com.dijkstrack.drools.model.GymClass.DifficultyLevel
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
+
+// Rule: Recommend classes based on member's most attended category
+// If member has attended 10+ classes in a category, recommend similar classes
+rule "Recommend Based on Category Preference"
+    salience 50
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(totalClassesAttended >= 10)
+        $class : GymClass(category == ClassCategory.CARDIO)
+        eval($member.getBookings().stream()
+            .filter(b -> b.getStatus() == Booking.BookingStatus.CONFIRMED)
+            .count() >= 5)
+    then
+        // Mark as recommended based on preference
+        System.out.println("Rule fired: Recommend Based on Category Preference - " + 
+                          $class.getClassName() + " matches member's preferred category");
+end
+
+// Rule: Recommend beginner classes for new members (first 5 classes)
+rule "Recommend Beginner Classes for New Members"
+    salience 45
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(totalClassesAttended < 5 || totalClassesAttended == null)
+        $class : GymClass(difficulty == DifficultyLevel.BEGINNER || 
+                         difficulty == DifficultyLevel.ALL_LEVELS)
+    then
+        System.out.println("Rule fired: Recommend Beginner Classes for New Members - " + 
+                          $class.getClassName() + " is suitable for new member");
+end
+
+// Rule: Recommend progression classes for intermediate members
+// If member has attended 20+ beginner classes, recommend intermediate
+rule "Recommend Progression to Intermediate"
+    salience 40
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(totalClassesAttended >= 20)
+        $class : GymClass(difficulty == DifficultyLevel.INTERMEDIATE || 
+                         difficulty == DifficultyLevel.ALL_LEVELS)
+    then
+        System.out.println("Rule fired: Recommend Progression to Intermediate - " + 
+                          $member.getMemberId() + " ready for intermediate classes");
+end
+
+// Rule: Recommend advanced classes for experienced members (50+ classes)
+rule "Recommend Advanced Classes for Experienced Members"
+    salience 35
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(totalClassesAttended >= 50)
+        $class : GymClass(difficulty == DifficultyLevel.ADVANCED || 
+                         difficulty == DifficultyLevel.ALL_LEVELS)
+    then
+        System.out.println("Rule fired: Recommend Advanced Classes - " + 
+                          $member.getMemberId() + " eligible for advanced classes");
+end
+
+// Rule: Recommend classes at preferred time slots
+// If member frequently books morning classes, recommend morning classes
+rule "Recommend Based on Time Preference"
+    salience 30
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member()
+        $class : GymClass()
+        eval($class.getClassDateTime().getHour() >= 6 && 
+             $class.getClassDateTime().getHour() <= 10)
+    then
+        System.out.println("Rule fired: Recommend Based on Time Preference - " + 
+                          "Morning class recommended");
+end
+
+// Rule: Recommend classes with favorite instructors
+// If member has attended 3+ classes with same instructor, recommend their classes
+rule "Recommend Based on Instructor Preference"
+    salience 25
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member()
+        $class : GymClass()
+        eval($member.getBookings().stream()
+            .filter(b -> b.getStatus() == Booking.BookingStatus.CONFIRMED)
+            .anyMatch(b -> b.getClassId() != null))
+    then
+        System.out.println("Rule fired: Recommend Based on Instructor Preference - " + 
+                          $class.getInstructor() + " is a preferred instructor");
+end
+
+// Rule: Recommend variety - suggest different category if member only attends one type
+rule "Recommend Category Variety"
+    salience 20
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(totalClassesAttended >= 10)
+        $class : GymClass()
+        // Logic to check if member needs variety
+    then
+        System.out.println("Rule fired: Recommend Category Variety - " + 
+                          "Suggesting different category for balanced fitness");
+end
+
+// Rule: Recommend classes with good availability (not almost full)
+rule "Recommend Classes with Good Availability"
+    salience 15
+    when
+        $request : BookingRequest(valid == true)
+        $class : GymClass(getAvailableSpots() >= 5)
+    then
+        System.out.println("Rule fired: Recommend Classes with Good Availability - " + 
+                          $class.getClassName() + " has " + $class.getAvailableSpots() + " spots available");
+end
+

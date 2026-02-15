@@ -1,0 +1,152 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.BookingRequest
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.GymClass
+import com.dijkstrack.drools.model.Booking
+import java.time.temporal.ChronoUnit
+
+// Rule: Prevent double booking - member cannot book two classes at the same time
+rule "Prevent Double Booking - Same Time"
+    salience 100
+    when
+        $request : BookingRequest()
+        $member : Member(memberId == $request.getMember().getMemberId())
+        $class : GymClass(classId == $request.getGymClass().getClassId())
+        eval(
+            $member.getBookings() != null &&
+            $member.getBookings().stream()
+                .filter(b -> b.getStatus() == Booking.BookingStatus.CONFIRMED)
+                .anyMatch(b -> {
+                    if (b.getClassDateTime() == null || $class.getClassDateTime() == null) {
+                        return false;
+                    }
+                    long minutesDiff = Math.abs(ChronoUnit.MINUTES.between(
+                        b.getClassDateTime(),
+                        $class.getClassDateTime()
+                    ));
+                    return minutesDiff < 60; // Classes within 1 hour conflict
+                })
+        )
+    then
+        $request.getBooking().reject("You already have a class booked at this time. " +
+                                     "Please cancel the existing booking or choose a different time.");
+        $request.setValid(false);
+        $request.setValidationMessage("Scheduling conflict - double booking");
+        System.out.println("Rule fired: Prevent Double Booking - Same Time");
+end
+
+// Rule: Prevent booking classes too close together (less than 30 minutes apart)
+rule "Prevent Back-to-Back Classes"
+    salience 90
+    when
+        $request : BookingRequest()
+        $member : Member(memberId == $request.getMember().getMemberId())
+        $class : GymClass(classId == $request.getGymClass().getClassId())
+        eval(
+            $member.getBookings() != null &&
+            $member.getBookings().stream()
+                .filter(b -> b.getStatus() == Booking.BookingStatus.CONFIRMED)
+                .anyMatch(b -> {
+                    if (b.getClassDateTime() == null || $class.getClassDateTime() == null) {
+                        return false;
+                    }
+                    long minutesDiff = Math.abs(ChronoUnit.MINUTES.between(
+                        b.getClassDateTime(),
+                        $class.getClassDateTime()
+                    ));
+                    return minutesDiff > 0 && minutesDiff < 30;
+                })
+        )
+    then
+        $request.getBooking().reject("Classes must be at least 30 minutes apart. " +
+                                     "Please allow time for rest and transition between classes.");
+        $request.setValid(false);
+        $request.setValidationMessage("Classes too close together");
+        System.out.println("Rule fired: Prevent Back-to-Back Classes");
+end
+
+// Rule: Limit maximum classes per day (3 classes max)
+rule "Maximum Classes Per Day"
+    salience 80
+    when
+        $request : BookingRequest()
+        $member : Member(memberId == $request.getMember().getMemberId())
+        $class : GymClass(classId == $request.getGymClass().getClassId())
+        eval(
+            $member.getBookings() != null &&
+            $member.getBookings().stream()
+                .filter(b -> b.getStatus() == Booking.BookingStatus.CONFIRMED)
+                .filter(b -> {
+                    if (b.getClassDateTime() == null || $class.getClassDateTime() == null) {
+                        return false;
+                    }
+                    return b.getClassDateTime().toLocalDate()
+                           .equals($class.getClassDateTime().toLocalDate());
+                })
+                .count() >= 3
+        )
+    then
+        $request.getBooking().reject("Maximum 3 classes per day allowed. " +
+                                     "You have already booked 3 classes today.");
+        $request.setValid(false);
+        $request.setValidationMessage("Maximum classes per day exceeded");
+        System.out.println("Rule fired: Maximum Classes Per Day");
+end
+
+// Rule: VIP members can book up to 5 classes per day
+rule "VIP Maximum Classes Per Day"
+    salience 75
+    when
+        $request : BookingRequest()
+        $member : Member(memberId == $request.getMember().getMemberId(),
+                        membershipType == Member.MembershipType.VIP)
+        $class : GymClass(classId == $request.getGymClass().getClassId())
+        eval(
+            $member.getBookings() != null &&
+            $member.getBookings().stream()
+                .filter(b -> b.getStatus() == Booking.BookingStatus.CONFIRMED)
+                .filter(b -> {
+                    if (b.getClassDateTime() == null || $class.getClassDateTime() == null) {
+                        return false;
+                    }
+                    return b.getClassDateTime().toLocalDate()
+                           .equals($class.getClassDateTime().toLocalDate());
+                })
+                .count() >= 5
+        )
+    then
+        $request.getBooking().reject("Maximum 5 classes per day allowed for VIP members. " +
+                                     "You have already booked 5 classes today.");
+        $request.setValid(false);
+        $request.setValidationMessage("VIP maximum classes per day exceeded");
+        System.out.println("Rule fired: VIP Maximum Classes Per Day");
+end
+
+// Rule: Prevent booking past classes
+rule "Prevent Booking Past Classes"
+    salience 70
+    when
+        $request : BookingRequest()
+        $class : GymClass(classId == $request.getGymClass().getClassId())
+        eval($class.getClassDateTime() != null && 
+             $class.getClassDateTime().isBefore(java.time.LocalDateTime.now()))
+    then
+        $request.getBooking().reject("Cannot book classes that have already started or passed.");
+        $request.setValid(false);
+        $request.setValidationMessage("Class time has passed");
+        System.out.println("Rule fired: Prevent Booking Past Classes");
+end
+
+// Rule: Check for instructor conflicts (same instructor, overlapping times)
+rule "Instructor Conflict Check"
+    salience 60
+    when
+        $request : BookingRequest()
+        $class : GymClass(classId == $request.getGymClass().getClassId())
+        // This would require checking other classes with same instructor
+        // For now, just log
+    then
+        System.out.println("Rule fired: Instructor Conflict Check - " + $class.getInstructor());
+end
+

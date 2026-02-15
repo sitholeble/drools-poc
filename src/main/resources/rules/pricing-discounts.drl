@@ -1,0 +1,76 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.BookingRequest
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.Booking
+
+// Rule 7: VIP members get 20% discount
+rule "VIP Member Discount"
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(membershipType == Member.MembershipType.VIP)
+    then
+        double discount = $request.getBooking().getOriginalPrice() * 0.20;
+        $request.getBooking().applyDiscount(discount, "VIP member discount (20%)");
+        System.out.println("Rule fired: VIP Member Discount - " + discount);
+end
+
+// Rule 8: Student members get 15% discount
+rule "Student Discount"
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(membershipType == Member.MembershipType.STUDENT)
+    then
+        double discount = $request.getBooking().getOriginalPrice() * 0.15;
+        $request.getBooking().applyDiscount(discount, "Student discount (15%)");
+        System.out.println("Rule fired: Student Discount - " + discount);
+end
+
+// Rule 9: Senior members get 15% discount
+rule "Senior Discount"
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(membershipType == Member.MembershipType.SENIOR)
+    then
+        double discount = $request.getBooking().getOriginalPrice() * 0.15;
+        $request.getBooking().applyDiscount(discount, "Senior discount (15%)");
+        System.out.println("Rule fired: Senior Discount - " + discount);
+end
+
+// Rule 10: New members (first 30 days) get 10% discount
+rule "New Member Discount"
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(isNewMember == true,
+                        getDaysSinceMembershipStart() <= 30)
+    then
+        double discount = $request.getBooking().getOriginalPrice() * 0.10;
+        $request.getBooking().applyDiscount(discount, "New member discount (10%)");
+        System.out.println("Rule fired: New Member Discount - " + discount);
+end
+
+// Rule 11: Loyalty discount - members with 50+ classes get 5% discount
+rule "Loyalty Discount"
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(totalClassesAttended >= 50)
+        eval($member.getMembershipType() != Member.MembershipType.VIP)
+    then
+        double discount = $request.getBooking().getOriginalPrice() * 0.05;
+        $request.getBooking().applyDiscount(discount, "Loyalty discount (5%) - 50+ classes");
+        System.out.println("Rule fired: Loyalty Discount - " + discount);
+end
+
+// Rule 12: Premium and VIP members get free classes (100% discount)
+rule "Premium VIP Free Classes"
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(membershipType == Member.MembershipType.PREMIUM || 
+                        membershipType == Member.MembershipType.VIP)
+    then
+        double discount = $request.getBooking().getOriginalPrice();
+        $request.getBooking().applyDiscount(discount, "Premium/VIP membership - free class");
+        System.out.println("Rule fired: Premium/VIP Free Classes");
+end
+
+
