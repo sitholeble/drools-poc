@@ -1,0 +1,180 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.Booking
+import com.dijkstrack.drools.model.Member
+import java.time.LocalDateTime
+import java.util.List
+import java.util.Map
+import java.util.HashMap
+
+// ============================================
+// ACCUMULATE FUNCTIONS EXAMPLES
+// ============================================
+
+// Example 1: Calculate Total Monthly Revenue
+rule "Calculate Monthly Revenue"
+    when
+        $startDate : LocalDateTime()
+        $endDate : LocalDateTime()
+        $totalRevenue : Number() from accumulate(
+            $booking : Booking(
+                status == Booking.BookingStatus.CONFIRMED,
+                bookingDateTime >= $startDate,
+                bookingDateTime <= $endDate
+            );
+            sum($booking.getFinalPrice())  // Sum all final prices
+        )
+        $bookingCount : Number() from accumulate(
+            $booking : Booking(
+                status == Booking.BookingStatus.CONFIRMED,
+                bookingDateTime >= $startDate,
+                bookingDateTime <= $endDate
+            );
+            count($booking)  // Count total bookings
+        )
+    then
+        double avgBookingValue = $bookingCount.doubleValue() > 0 
+            ? $totalRevenue.doubleValue() / $bookingCount.doubleValue() 
+            : 0.0;
+        
+        System.out.println("========================================");
+        System.out.println("MONTHLY REVENUE REPORT");
+        System.out.println("========================================");
+        System.out.println("Total Revenue: $" + $totalRevenue);
+        System.out.println("Total Bookings: " + $bookingCount);
+        System.out.println("Average Booking Value: $" + String.format("%.2f", avgBookingValue));
+        System.out.println("========================================");
+end
+
+// Example 2: Calculate Member Lifetime Value
+rule "Calculate Member Lifetime Value"
+    when
+        $member : Member()
+        $totalSpent : Number() from accumulate(
+            $booking : Booking(
+                memberId == $member.getMemberId(),
+                status == Booking.BookingStatus.CONFIRMED
+            );
+            sum($booking.getFinalPrice())
+        )
+        $bookingCount : Number() from accumulate(
+            $booking : Booking(
+                memberId == $member.getMemberId(),
+                status == Booking.BookingStatus.CONFIRMED
+            );
+            count($booking)
+        )
+        $avgBookingValue : Number() from accumulate(
+            $booking : Booking(
+                memberId == $member.getMemberId(),
+                status == Booking.BookingStatus.CONFIRMED
+            );
+            avg($booking.getFinalPrice())
+        )
+    then
+        System.out.println("Member: " + $member.getMemberId() + " (" + $member.getName() + ")");
+        System.out.println("  Total Spent: $" + String.format("%.2f", $totalSpent.doubleValue()));
+        System.out.println("  Total Bookings: " + $bookingCount);
+        System.out.println("  Average Booking: $" + String.format("%.2f", $avgBookingValue.doubleValue()));
+end
+
+// Example 3: Find Most Popular Classes
+rule "Find Most Popular Classes"
+    when
+        $startDate : LocalDateTime()
+        $classBookings : List() from accumulate(
+            $booking : Booking(
+                status == Booking.BookingStatus.CONFIRMED,
+                bookingDateTime >= $startDate
+            );
+            collectList($booking.getClassId())
+        )
+    then
+        // Count bookings per class
+        Map<String, Integer> classCounts = new HashMap<>();
+        for (Object classId : $classBookings) {
+            String id = (String) classId;
+            classCounts.put(id, classCounts.getOrDefault(id, 0) + 1);
+        }
+        
+        System.out.println("========================================");
+        System.out.println("MOST POPULAR CLASSES");
+        System.out.println("========================================");
+        classCounts.entrySet().stream()
+            .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+            .limit(5)
+            .forEach(entry -> 
+                System.out.println("Class: " + entry.getKey() + " - " + entry.getValue() + " bookings")
+            );
+        System.out.println("========================================");
+end
+
+// Example 4: Calculate Discount Statistics
+rule "Calculate Discount Statistics"
+    when
+        $startDate : LocalDateTime()
+        $totalDiscounts : Number() from accumulate(
+            $booking : Booking(
+                status == Booking.BookingStatus.CONFIRMED,
+                discount > 0,
+                bookingDateTime >= $startDate
+            );
+            sum($booking.getDiscount())
+        )
+        $discountedBookings : Number() from accumulate(
+            $booking : Booking(
+                status == Booking.BookingStatus.CONFIRMED,
+                discount > 0,
+                bookingDateTime >= $startDate
+            );
+            count($booking)
+        )
+        $avgDiscount : Number() from accumulate(
+            $booking : Booking(
+                status == Booking.BookingStatus.CONFIRMED,
+                discount > 0,
+                bookingDateTime >= $startDate
+            );
+            avg($booking.getDiscount())
+        )
+    then
+        System.out.println("========================================");
+        System.out.println("DISCOUNT STATISTICS");
+        System.out.println("========================================");
+        System.out.println("Total Discounts Given: $" + String.format("%.2f", $totalDiscounts.doubleValue()));
+        System.out.println("Bookings with Discounts: " + $discountedBookings);
+        System.out.println("Average Discount: $" + String.format("%.2f", $avgDiscount.doubleValue()));
+        System.out.println("========================================");
+end
+
+// Example 5: Find Peak Booking Hours
+rule "Find Peak Booking Hours"
+    when
+        $startDate : LocalDateTime()
+        $hourlyBookings : List() from accumulate(
+            $booking : Booking(
+                status == Booking.BookingStatus.CONFIRMED,
+                bookingDateTime >= $startDate
+            );
+            collectList($booking.getBookingDateTime().getHour())
+        )
+    then
+        // Count bookings per hour
+        Map<Integer, Integer> hourCounts = new HashMap<>();
+        for (Object hour : $hourlyBookings) {
+            Integer h = (Integer) hour;
+            hourCounts.put(h, hourCounts.getOrDefault(h, 0) + 1);
+        }
+        
+        System.out.println("========================================");
+        System.out.println("PEAK BOOKING HOURS");
+        System.out.println("========================================");
+        hourCounts.entrySet().stream()
+            .sorted(Map.Entry.<Integer, Integer>comparingByValue().reversed())
+            .limit(5)
+            .forEach(entry -> 
+                System.out.println("Hour: " + entry.getKey() + ":00 - " + entry.getValue() + " bookings")
+            );
+        System.out.println("========================================");
+end
+
