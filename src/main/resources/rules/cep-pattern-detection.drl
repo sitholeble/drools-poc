@@ -1,0 +1,138 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.Booking
+import java.util.List
+
+// ============================================
+// CEP (COMPLEX EVENT PROCESSING) EXAMPLES
+// ============================================
+// These rules detect patterns in event streams over time windows
+
+// Pattern 1: Detect Rapid Booking Pattern (Potential Bot/Fraud)
+// Alert if someone books 5+ classes in 5 minutes
+rule "CEP: Rapid Booking Pattern Detection"
+    when
+        $memberId : String()
+        $bookings : List(size >= 5) from collect(
+            Booking(
+                memberId == $memberId
+            ) over window:time(5m)  // 5 minute time window
+        )
+    then
+        System.out.println("========================================");
+        System.out.println("FRAUD ALERT: Rapid Booking Pattern");
+        System.out.println("========================================");
+        System.out.println("Member ID: " + $memberId);
+        System.out.println("Bookings in 5 minutes: " + $bookings.size());
+        System.out.println("Action: Flag for manual review");
+        System.out.println("========================================");
+end
+
+// Pattern 2: Detect Frequent No-Show Pattern
+// Alert if member no-shows 3+ times in 30 days
+rule "CEP: Frequent No-Show Pattern"
+    when
+        $memberId : String()
+        $noShows : List(size >= 3) from collect(
+            Booking(
+                memberId == $memberId,
+                status == Booking.BookingStatus.CANCELLED,
+                rejectionReason != null,
+                eval($rejectionReason.contains("no-show"))
+            ) over window:time(30d)  // 30 day time window
+        )
+    then
+        System.out.println("========================================");
+        System.out.println("ALERT: Frequent No-Show Pattern");
+        System.out.println("========================================");
+        System.out.println("Member ID: " + $memberId);
+        System.out.println("No-shows in 30 days: " + $noShows.size());
+        System.out.println("Action: Apply penalty or restriction");
+        System.out.println("========================================");
+end
+
+// Pattern 3: Detect Class Cancellation Pattern
+// Alert if a class gets cancelled frequently (instructor issue?)
+rule "CEP: Frequent Class Cancellation Pattern"
+    when
+        $classId : String()
+        $cancellations : List(size >= 5) from collect(
+            Booking(
+                classId == $classId,
+                status == Booking.BookingStatus.CANCELLED,
+                rejectionReason != null,
+                eval($rejectionReason.contains("class cancelled"))
+            ) over window:time(7d)  // 7 day time window
+        )
+    then
+        System.out.println("========================================");
+        System.out.println("ALERT: Class Frequently Cancelled");
+        System.out.println("========================================");
+        System.out.println("Class ID: " + $classId);
+        System.out.println("Cancellations in 7 days: " + $cancellations.size());
+        System.out.println("Action: Notify management");
+        System.out.println("========================================");
+end
+
+// Pattern 4: Detect Peak Booking Time
+// Alert when booking volume spikes (capacity planning)
+rule "CEP: Peak Booking Time Detection"
+    when
+        $bookingCount : Number() from accumulate(
+            Booking(
+                status == Booking.BookingStatus.CONFIRMED
+            ) over window:time(1h);  // 1 hour time window
+            count($booking)
+        )
+        eval($bookingCount.intValue() >= 50)  // 50+ bookings in 1 hour
+    then
+        System.out.println("========================================");
+        System.out.println("Peak Booking Time Detected");
+        System.out.println("========================================");
+        System.out.println("Bookings in 1 hour: " + $bookingCount);
+        System.out.println("Action: Scale up capacity");
+        System.out.println("========================================");
+end
+
+// Pattern 5: Detect Suspicious Discount Usage
+// Alert if someone is abusing discounts
+rule "CEP: Suspicious Discount Pattern"
+    when
+        $memberId : String()
+        $discountedBookings : List(size >= 10) from collect(
+            Booking(
+                memberId == $memberId,
+                discount > 0
+            ) over window:time(7d)  // 7 day time window
+        )
+    then
+        System.out.println("========================================");
+        System.out.println("FRAUD ALERT: Suspicious Discount Usage");
+        System.out.println("========================================");
+        System.out.println("Member ID: " + $memberId);
+        System.out.println("Discounted bookings in 7 days: " + $discountedBookings.size());
+        System.out.println("Action: Review for fraud");
+        System.out.println("========================================");
+end
+
+// Pattern 6: Detect Booking Spam Pattern
+// Alert if someone books and cancels repeatedly
+rule "CEP: Booking Spam Pattern"
+    when
+        $memberId : String()
+        $cancelledBookings : List(size >= 5) from collect(
+            Booking(
+                memberId == $memberId,
+                status == Booking.BookingStatus.CANCELLED
+            ) over window:time(24h)  // 24 hour time window
+        )
+    then
+        System.out.println("========================================");
+        System.out.println("ALERT: Booking Spam Pattern");
+        System.out.println("========================================");
+        System.out.println("Member ID: " + $memberId);
+        System.out.println("Cancellations in 24 hours: " + $cancelledBookings.size());
+        System.out.println("Action: Restrict booking privileges");
+        System.out.println("========================================");
+end
+

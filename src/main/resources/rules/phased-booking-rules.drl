@@ -1,0 +1,113 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.BookingRequest
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.GymClass
+import com.dijkstrack.drools.model.Booking
+import java.time.LocalDate
+
+// ============================================
+// PHASE 1: VALIDATION
+// ============================================
+// These rules run FIRST to validate the booking request
+// If validation fails, subsequent phases are skipped
+
+rule "Phase 1: Membership Expired"
+    agenda-group "validation"
+    salience 100
+    when
+        $request : BookingRequest(member.membershipEndDate != null)
+        eval($request.getMember().getMembershipEndDate().isBefore(LocalDate.now()))
+    then
+        $request.getBooking().reject("Membership has expired. Please renew your membership.");
+        $request.setValid(false);
+        $request.setValidationMessage("Membership expired");
+        System.out.println("[PHASE 1 - VALIDATION] Rule fired: Membership Expired");
+end
+
+rule "Phase 1: Class Full"
+    agenda-group "validation"
+    salience 100
+    when
+        $request : BookingRequest(gymClass.isFull == true)
+    then
+        $request.getBooking().reject("Class is full. No available spots.");
+        $request.setValid(false);
+        $request.setValidationMessage("Class is full");
+        System.out.println("[PHASE 1 - VALIDATION] Rule fired: Class Full");
+end
+
+rule "Phase 1: Premium Membership Required"
+    agenda-group "validation"
+    salience 100
+    when
+        $request : BookingRequest(gymClass.requiresPremium == true)
+        $member : Member(membershipType != Member.MembershipType.PREMIUM && 
+                        membershipType != Member.MembershipType.VIP)
+    then
+        $request.getBooking().reject("This class requires a Premium or VIP membership.");
+        $request.setValid(false);
+        $request.setValidationMessage("Premium membership required");
+        System.out.println("[PHASE 1 - VALIDATION] Rule fired: Premium Membership Required");
+end
+
+// ============================================
+// PHASE 2: PRICING
+// ============================================
+// These rules run ONLY if validation passed (valid == true)
+// They apply discounts and calculate final price
+
+rule "Phase 2: VIP Member Discount"
+    agenda-group "pricing"
+    salience 50
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(membershipType == Member.MembershipType.VIP)
+    then
+        double discount = $request.getBooking().getOriginalPrice() * 0.20;
+        $request.getBooking().applyDiscount(discount, "VIP member discount (20%)");
+        System.out.println("[PHASE 2 - PRICING] Rule fired: VIP Member Discount - $" + discount);
+end
+
+rule "Phase 2: Student Discount"
+    agenda-group "pricing"
+    salience 50
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(membershipType == Member.MembershipType.STUDENT)
+    then
+        double discount = $request.getBooking().getOriginalPrice() * 0.15;
+        $request.getBooking().applyDiscount(discount, "Student discount (15%)");
+        System.out.println("[PHASE 2 - PRICING] Rule fired: Student Discount - $" + discount);
+end
+
+rule "Phase 2: Loyalty Discount"
+    agenda-group "pricing"
+    salience 45
+    when
+        $request : BookingRequest(valid == true)
+        $member : Member(totalClassesAttended >= 50)
+        eval($member.getMembershipType() != Member.MembershipType.VIP)
+    then
+        double discount = $request.getBooking().getOriginalPrice() * 0.05;
+        $request.getBooking().applyDiscount(discount, "Loyalty discount (5%) - 50+ classes");
+        System.out.println("[PHASE 2 - PRICING] Rule fired: Loyalty Discount - $" + discount);
+end
+
+// ============================================
+// PHASE 3: CONFIRMATION
+// ============================================
+// These rules run ONLY if validation passed
+// They confirm the booking and update status
+
+rule "Phase 3: Confirm Valid Booking"
+    agenda-group "confirmation"
+    salience 10
+    when
+        $request : BookingRequest(valid == true)
+    then
+        $request.getBooking().confirm();
+        System.out.println("[PHASE 3 - CONFIRMATION] Rule fired: Booking Confirmed");
+        System.out.println("Final Price: $" + $request.getBooking().getFinalPrice());
+end
+

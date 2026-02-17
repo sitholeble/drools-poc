@@ -41,6 +41,11 @@ public class DroolsConfig {
         // Queries for data extraction
         kieFileSystem.write(ResourceFactory.newClassPathResource(RULES_PATH + "queries.drl"));
         
+        // Advanced features
+        kieFileSystem.write(ResourceFactory.newClassPathResource(RULES_PATH + "phased-booking-rules.drl"));
+        kieFileSystem.write(ResourceFactory.newClassPathResource(RULES_PATH + "analytics-accumulate.drl"));
+        kieFileSystem.write(ResourceFactory.newClassPathResource(RULES_PATH + "cep-pattern-detection.drl"));
+        
         KieBuilder kieBuilder = kieServices.newKieBuilder(kieFileSystem);
         kieBuilder.buildAll();
         
