@@ -1,0 +1,80 @@
+package com.dijkstrack.drools.rules
+
+import com.dijkstrack.drools.model.Booking
+import com.dijkstrack.drools.model.Member
+import com.dijkstrack.drools.model.GymClass
+import java.time.LocalDateTime
+import java.time.LocalDate
+
+// Query: Find all active bookings for a member
+query "Find Active Bookings for Member"
+    $memberId : String
+    $booking : Booking(
+        memberId == $memberId,
+        status == Booking.BookingStatus.CONFIRMED || 
+        status == Booking.BookingStatus.WAITLISTED
+    )
+end
+
+// Query: Find all bookings with discounts applied
+query "Find Bookings with Discounts"
+    $booking : Booking(discount > 0)
+end
+
+// Query: Find bookings for a specific class
+query "Find Bookings for Class"
+    $classId : String
+    $booking : Booking(
+        classId == $classId,
+        status == Booking.BookingStatus.CONFIRMED
+    )
+end
+
+// Query: Find members eligible for loyalty discount
+query "Find Loyalty Eligible Members"
+    $member : Member(
+        totalClassesAttended >= 50,
+        membershipType != Member.MembershipType.VIP
+    )
+end
+
+// Query: Find upcoming classes with available spots
+query "Find Available Classes"
+    $class : GymClass(
+        isFull == false,
+        classDateTime > $now
+    )
+    $now : LocalDateTime()
+end
+
+// Query: Find members with expired memberships
+query "Find Expired Memberships"
+    $member : Member()
+    eval($member.getMembershipEndDate() != null && 
+         $member.getMembershipEndDate().isBefore(LocalDate.now()))
+end
+
+// Query: Find bookings in a date range
+query "Find Bookings in Date Range"
+    $startDate : LocalDateTime()
+    $endDate : LocalDateTime()
+    $booking : Booking(
+        bookingDateTime >= $startDate,
+        bookingDateTime <= $endDate
+    )
+end
+
+// Query: Find VIP members
+query "Find VIP Members"
+    $member : Member(membershipType == Member.MembershipType.VIP)
+end
+
+// Query: Count bookings by status
+query "Count Bookings by Status"
+    $status : Booking.BookingStatus
+    $count : Number() from accumulate(
+        $booking : Booking(status == $status);
+        count($booking)
+    )
+end
+

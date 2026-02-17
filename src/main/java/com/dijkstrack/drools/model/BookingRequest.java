@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Request object for processing bookings through Drools rules engine.
@@ -20,6 +21,7 @@ public class BookingRequest {
     private LocalDateTime requestDateTime;
     private String validationMessage;
     private Boolean isValid;
+    private List<String> firedRules; // Track which rules fired during execution
     
     public BookingRequest(Member member, GymClass gymClass) {
         this.member = member;

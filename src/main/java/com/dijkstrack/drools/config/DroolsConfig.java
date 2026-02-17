@@ -38,6 +38,9 @@ public class DroolsConfig {
         kieFileSystem.write(ResourceFactory.newClassPathResource(RULES_PATH + "cancellation-policy.drl"));
         kieFileSystem.write(ResourceFactory.newClassPathResource(RULES_PATH + "referral-bonus.drl"));
         
+        // Queries for data extraction
+        kieFileSystem.write(ResourceFactory.newClassPathResource(RULES_PATH + "queries.drl"));
+        
         KieBuilder kieBuilder = kieServices.newKieBuilder(kieFileSystem);
         kieBuilder.buildAll();
         
