@@ -57,8 +57,16 @@ USER_PROFILES = {
 # Which profile to use when running this script (or pass to recommend_for_user)
 ACTIVE_USER = "mixed"
 
-# Diversity: bonus added to objective for each distinct category in the selection
-DIVERSITY_BONUS = 2.0
+# ============================================
+# DIVERSITY: Category bonus in the objective
+# ============================================
+# Each class has a category (e.g. cardio, mind_body, strength). We add a bonus to the
+# objective for each distinct category represented in the selected plan, so the solver
+# prefers plans that span more categories (variety) when satisfaction is similar.
+# Set DIVERSITY_BONUS = 0 to turn off diversity (only maximize satisfaction).
+
+CATEGORIES = ["cardio", "mind_body", "strength"]  # Must match CLASSES[c]["category"]
+DIVERSITY_BONUS = 2.0   # Added to objective per category in the plan (e.g. 2 categories -> +4)
 
 
 def get_preferences_for_user(user_id_or_preferences):
@@ -85,6 +93,15 @@ def get_score(class_name, user_preferences):
 def get_categories(classes):
     """Unique categories in class catalog."""
     return list({classes[c]["category"] for c in classes})
+
+
+def get_classes_by_category(classes):
+    """Return dict category -> list of class names (for diversity: which classes count toward each category)."""
+    by_cat = {}
+    for c in classes:
+        cat = classes[c]["category"]
+        by_cat.setdefault(cat, []).append(c)
+    return by_cat
 
 
 def build_problem(classes, user_preferences, max_budget, max_classes, max_duration, diversity_bonus, exclude_set=None):
@@ -148,6 +165,8 @@ def print_plan(plan_label, recommended, total_price, total_duration, total_score
         sc = get_score(c, user_preferences)
         print(f"  - {c}: {info['time_slot']}, {info['duration']}min, ${info['price']}, score={sc}, category={info['category']}")
     print(f"  Total: ${total_price}, {total_duration} min, satisfaction={total_score}, categories={categories_used}")
+    if categories_used and DIVERSITY_BONUS:
+        print(f"  Diversity: {len(categories_used)} categories -> bonus +{len(categories_used) * DIVERSITY_BONUS}")
 
 
 def recommend_for_user(user_id_or_preferences, max_budget=MAX_BUDGET, max_classes=MAX_CLASSES, max_duration=MAX_DURATION):
@@ -194,7 +213,7 @@ def run_recommendation():
     print("ILP RECOMMENDATION - Personalization + Diversity + Top-2 Plans")
     print("=" * 60)
     print(f"\nBudget: ${MAX_BUDGET}  Max classes: {MAX_CLASSES}  Max duration: {MAX_DURATION} min")
-    print(f"Diversity bonus per category: {DIVERSITY_BONUS}")
+    print(f"Diversity: +{DIVERSITY_BONUS} per category in plan (categories: {', '.join(get_categories(CLASSES))})")
     print("User (personalization): " + user_label)
 
     # Plan 1
@@ -232,12 +251,3 @@ def run_recommendation():
 
 if __name__ == "__main__":
     run_recommendation()
-
-    # Optional: show how recommendations differ by user (personalization)
-    # Uncomment to run:
-    # print("\n" + "=" * 60)
-    # print("PERSONALIZATION DEMO: same constraints, different users")
-    # print("=" * 60)
-    # for uid in ["cardio_lover", "mind_body_fan", "budget_focused"]:
-    #     rec1, s1, rec2, s2 = recommend_for_user(uid)
-    #     print(f"\n{uid}:  Plan1 {rec1} (satisfaction={s1})  Plan2 {rec2} (satisfaction={s2})")
