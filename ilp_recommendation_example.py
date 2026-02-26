@@ -32,25 +32,51 @@ MAX_CLASSES = 3
 MAX_DURATION = 150
 TIME_SLOTS = ["morning", "afternoon", "evening"]
 
-# Personalization: override scores per user (None = use default from CLASSES)
-# Example: this user loves cardio and doesn't care for mind_body
-USER_PREFERENCES = {
-    "Yoga":     5,
-    "HIIT":    10,
-    "Pilates":  4,
-    "Spinning": 8,
-    "Boxing":   7,
-    "Zumba":    9,
+# ============================================
+# PERSONALIZATION: User-specific preference scores
+# ============================================
+# Each user has a dict of class_name -> score (1-10). Missing classes use CLASSES default.
+# Recommendations maximize that user's total satisfaction.
+
+USER_PROFILES = {
+    "default": None,  # Use CLASSES[c]["preference_score"] for everyone
+    "cardio_lover": {
+        "Yoga":     3, "HIIT":    10, "Pilates":  2, "Spinning": 9, "Boxing":  6, "Zumba":   9,
+    },
+    "budget_focused": {
+        "Yoga":     7, "HIIT":    4, "Pilates":  8, "Spinning": 3, "Boxing":  2, "Zumba":  10,  # Prefers cheaper (Yoga, Zumba)
+    },
+    "mind_body_fan": {
+        "Yoga":    10, "HIIT":    2, "Pilates": 10, "Spinning": 1, "Boxing":  1, "Zumba":   4,
+    },
+    "mixed": {
+        "Yoga":     5, "HIIT":   10, "Pilates":  4, "Spinning": 8, "Boxing":  7, "Zumba":   9,
+    },
 }
-# Set to None to use default CLASSES[c]["preference_score"] for all
-# USER_PREFERENCES = None
+
+# Which profile to use when running this script (or pass to recommend_for_user)
+ACTIVE_USER = "mixed"
 
 # Diversity: bonus added to objective for each distinct category in the selection
 DIVERSITY_BONUS = 2.0
 
 
+def get_preferences_for_user(user_id_or_preferences):
+    """
+    Resolve user preferences for personalization.
+    - str (e.g. 'cardio_lover'): look up in USER_PROFILES; 'default' or missing -> None.
+    - dict: use as class_name -> score override.
+    - None: use default scores from CLASSES.
+    """
+    if user_id_or_preferences is None:
+        return None
+    if isinstance(user_id_or_preferences, dict):
+        return user_id_or_preferences
+    return USER_PROFILES.get(user_id_or_preferences, USER_PROFILES["default"])
+
+
 def get_score(class_name, user_preferences):
-    """Preference score for a class: user override or default."""
+    """Preference score for a class: user override or default from CLASSES."""
     if user_preferences and class_name in user_preferences:
         return user_preferences[class_name]
     return CLASSES[class_name]["preference_score"]
@@ -124,17 +150,52 @@ def print_plan(plan_label, recommended, total_price, total_duration, total_score
     print(f"  Total: ${total_price}, {total_duration} min, satisfaction={total_score}, categories={categories_used}")
 
 
+def recommend_for_user(user_id_or_preferences, max_budget=MAX_BUDGET, max_classes=MAX_CLASSES, max_duration=MAX_DURATION):
+    """
+    Run personalized recommendation for one user. Maximizes that user's satisfaction
+    subject to budget, max classes, duration, and one class per time slot.
+
+    Args:
+        user_id_or_preferences: profile name (str) from USER_PROFILES, or dict of class_name -> score, or None for default.
+        max_budget, max_classes, max_duration: optional constraint overrides.
+
+    Returns:
+        (plan1_list, plan1_score, plan2_list, plan2_score) or (plan1, s1, None, None) if no second plan.
+    """
+    classes = CLASSES
+    user_preferences = get_preferences_for_user(user_id_or_preferences)
+    label = user_id_or_preferences if isinstance(user_id_or_preferences, str) else "custom"
+
+    problem1, x1, _ = build_problem(
+        classes, user_preferences, max_budget, max_classes, max_duration, DIVERSITY_BONUS, exclude_set=None
+    )
+    problem1.solve()
+    if problem1.status != 1:
+        return None, None, None, None
+
+    rec1, price1, dur1, score1, cat1 = get_solution(classes, x1, user_preferences)
+    problem2, x2, _ = build_problem(
+        classes, user_preferences, max_budget, max_classes, max_duration, DIVERSITY_BONUS, exclude_set=set(rec1)
+    )
+    problem2.solve()
+    if problem2.status != 1:
+        return rec1, score1, None, None
+    rec2, _, _, score2, _ = get_solution(classes, x2, user_preferences)
+    return rec1, score1, rec2, score2
+
+
 def run_recommendation():
     """Build model, solve for plan 1, then plan 2 (excluding plan 1), and print both."""
     classes = CLASSES
-    user_preferences = USER_PREFERENCES  # or None for defaults
+    user_preferences = get_preferences_for_user(ACTIVE_USER)
+    user_label = ACTIVE_USER if isinstance(ACTIVE_USER, str) else ("custom" if user_preferences else "default")
 
     print("=" * 60)
     print("ILP RECOMMENDATION - Personalization + Diversity + Top-2 Plans")
     print("=" * 60)
     print(f"\nBudget: ${MAX_BUDGET}  Max classes: {MAX_CLASSES}  Max duration: {MAX_DURATION} min")
     print(f"Diversity bonus per category: {DIVERSITY_BONUS}")
-    print("User preferences: " + ("custom" if user_preferences else "default"))
+    print("User (personalization): " + user_label)
 
     # Plan 1
     problem1, x1, y1 = build_problem(
@@ -171,3 +232,12 @@ def run_recommendation():
 
 if __name__ == "__main__":
     run_recommendation()
+
+    # Optional: show how recommendations differ by user (personalization)
+    # Uncomment to run:
+    # print("\n" + "=" * 60)
+    # print("PERSONALIZATION DEMO: same constraints, different users")
+    # print("=" * 60)
+    # for uid in ["cardio_lover", "mind_body_fan", "budget_focused"]:
+    #     rec1, s1, rec2, s2 = recommend_for_user(uid)
+    #     print(f"\n{uid}:  Plan1 {rec1} (satisfaction={s1})  Plan2 {rec2} (satisfaction={s2})")
