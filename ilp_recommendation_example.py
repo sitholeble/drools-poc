@@ -68,6 +68,18 @@ ACTIVE_USER = "mixed"
 CATEGORIES = ["cardio", "mind_body", "strength"]  # Must match CLASSES[c]["category"]
 DIVERSITY_BONUS = 2.0   # Added to objective per category in the plan (e.g. 2 categories -> +4)
 
+# ============================================
+# TOP-2 PLANS: Best and second-best alternatives
+# ============================================
+# We solve the ILP twice:
+#   1. First solve: get the best plan (maximize objective, no exclusion).
+#   2. Second solve: add a "not this set" constraint so the chosen set cannot be exactly
+#      the first plan, then solve again to get the best alternative (second-best plan).
+# The exclusion constraint: sum(1 - x[c] for c in plan1) + sum(x[c] for c not in plan1) >= 1
+#   forces at least one difference (either drop a class from plan1 or add a class not in plan1).
+# So the second solution is a different set of classes with the next-best objective value.
+TOP2_ENABLED = True   # Set False to only compute plan 1
+
 
 def get_preferences_for_user(user_id_or_preferences):
     """
@@ -136,9 +148,11 @@ def build_problem(classes, user_preferences, max_budget, max_classes, max_durati
         problem += lpSum(x[c] for c in in_cat) >= y[cat], f"Cat_has_class_{cat}"
         problem += lpSum(x[c] for c in in_cat) <= len(in_cat) * y[cat], f"Cat_upper_{cat}"
 
-    # Exclude previous solution (for top-2)
+    # Exclude previous solution (for top-2 plans)
     if exclude_set:
-        # Cannot select exactly this set: sum of (1-x[c]) for c in set + sum of x[c] for c not in set >= 1
+        # "Not this set": at least one difference from exclude_set.
+        # Sum(1-x[c] for c in set) + Sum(x[c] for c not in set) >= 1
+        # so we either drop something in the set or pick something outside it.
         problem += lpSum(1 - x[c] for c in exclude_set) + lpSum(x[c] for c in classes if c not in exclude_set) >= 1, "Exclude_prev"
 
     return problem, x, y
@@ -169,10 +183,45 @@ def print_plan(plan_label, recommended, total_price, total_duration, total_score
         print(f"  Diversity: {len(categories_used)} categories -> bonus +{len(categories_used) * DIVERSITY_BONUS}")
 
 
+def get_top2_plans(classes, user_preferences, max_budget, max_classes, max_duration, diversity_bonus):
+    """
+    Top-2 plans: solve ILP twice to get best and second-best recommendation sets.
+
+    Step 1: Solve with exclude_set=None -> best plan.
+    Step 2: Solve with exclude_set=set(plan1_classes) -> best plan that is not plan1 (second-best).
+
+    Returns:
+        (rec1, price1, dur1, score1, obj1, rec2, price2, dur2, score2, obj2)
+        where rec2/price2/... can be None if no second feasible plan.
+    """
+    problem1, x1, _ = build_problem(
+        classes, user_preferences, max_budget, max_classes, max_duration, diversity_bonus, exclude_set=None
+    )
+    problem1.solve()
+    if problem1.status != 1:
+        return None, None, None, None, None, None, None, None, None, None
+
+    rec1, price1, dur1, score1, cat1 = get_solution(classes, x1, user_preferences)
+    obj1 = problem1.objective.value()
+
+    if not TOP2_ENABLED:
+        return rec1, price1, dur1, score1, obj1, None, None, None, None, None
+
+    problem2, x2, _ = build_problem(
+        classes, user_preferences, max_budget, max_classes, max_duration, diversity_bonus, exclude_set=set(rec1)
+    )
+    problem2.solve()
+    if problem2.status != 1:
+        return rec1, price1, dur1, score1, obj1, None, None, None, None, None
+
+    rec2, price2, dur2, score2, cat2 = get_solution(classes, x2, user_preferences)
+    obj2 = problem2.objective.value()
+    return rec1, price1, dur1, score1, obj1, rec2, price2, dur2, score2, obj2
+
+
 def recommend_for_user(user_id_or_preferences, max_budget=MAX_BUDGET, max_classes=MAX_CLASSES, max_duration=MAX_DURATION):
     """
-    Run personalized recommendation for one user. Maximizes that user's satisfaction
-    subject to budget, max classes, duration, and one class per time slot.
+    Run personalized recommendation for one user. Returns top-2 plans (best and second-best).
 
     Args:
         user_id_or_preferences: profile name (str) from USER_PROFILES, or dict of class_name -> score, or None for default.
@@ -183,28 +232,15 @@ def recommend_for_user(user_id_or_preferences, max_budget=MAX_BUDGET, max_classe
     """
     classes = CLASSES
     user_preferences = get_preferences_for_user(user_id_or_preferences)
-    label = user_id_or_preferences if isinstance(user_id_or_preferences, str) else "custom"
-
-    problem1, x1, _ = build_problem(
-        classes, user_preferences, max_budget, max_classes, max_duration, DIVERSITY_BONUS, exclude_set=None
-    )
-    problem1.solve()
-    if problem1.status != 1:
+    result = get_top2_plans(classes, user_preferences, max_budget, max_classes, max_duration, DIVERSITY_BONUS)
+    rec1, price1, dur1, score1, obj1, rec2, price2, dur2, score2, obj2 = result
+    if rec1 is None:
         return None, None, None, None
-
-    rec1, price1, dur1, score1, cat1 = get_solution(classes, x1, user_preferences)
-    problem2, x2, _ = build_problem(
-        classes, user_preferences, max_budget, max_classes, max_duration, DIVERSITY_BONUS, exclude_set=set(rec1)
-    )
-    problem2.solve()
-    if problem2.status != 1:
-        return rec1, score1, None, None
-    rec2, _, _, score2, _ = get_solution(classes, x2, user_preferences)
     return rec1, score1, rec2, score2
 
 
 def run_recommendation():
-    """Build model, solve for plan 1, then plan 2 (excluding plan 1), and print both."""
+    """Build model, solve for plan 1 (best), then plan 2 (second-best, excluding plan 1), and print both."""
     classes = CLASSES
     user_preferences = get_preferences_for_user(ACTIVE_USER)
     user_label = ACTIVE_USER if isinstance(ACTIVE_USER, str) else ("custom" if user_preferences else "default")
@@ -215,31 +251,23 @@ def run_recommendation():
     print(f"\nBudget: ${MAX_BUDGET}  Max classes: {MAX_CLASSES}  Max duration: {MAX_DURATION} min")
     print(f"Diversity: +{DIVERSITY_BONUS} per category in plan (categories: {', '.join(get_categories(CLASSES))})")
     print("User (personalization): " + user_label)
+    print("Top-2: best plan, then second-best (exclude first set)")
 
-    # Plan 1
-    problem1, x1, y1 = build_problem(
-        classes, user_preferences, MAX_BUDGET, MAX_CLASSES, MAX_DURATION, DIVERSITY_BONUS, exclude_set=None
+    rec1, price1, dur1, score1, obj1, rec2, price2, dur2, score2, obj2 = get_top2_plans(
+        classes, user_preferences, MAX_BUDGET, MAX_CLASSES, MAX_DURATION, DIVERSITY_BONUS
     )
-    problem1.solve()
 
-    if problem1.status != 1:
+    if rec1 is None:
         print("\nNo feasible solution found.")
+        print("\n" + "=" * 60)
         return
 
-    rec1, price1, dur1, score1, cat1 = get_solution(classes, x1, user_preferences)
-    obj1 = problem1.objective.value()
+    cat1 = list({classes[c]["category"] for c in rec1})
     print_plan("PLAN 1 (Best)", rec1, price1, dur1, score1, cat1, user_preferences)
     print(f"  Objective (satisfaction + diversity): {obj1}")
 
-    # Plan 2: exclude plan 1
-    problem2, x2, y2 = build_problem(
-        classes, user_preferences, MAX_BUDGET, MAX_CLASSES, MAX_DURATION, DIVERSITY_BONUS, exclude_set=set(rec1)
-    )
-    problem2.solve()
-
-    if problem2.status == 1:
-        rec2, price2, dur2, score2, cat2 = get_solution(classes, x2, user_preferences)
-        obj2 = problem2.objective.value()
+    if rec2 is not None:
+        cat2 = list({classes[c]["category"] for c in rec2})
         print_plan("PLAN 2 (Second best)", rec2, price2, dur2, score2, cat2, user_preferences)
         print(f"  Objective (satisfaction + diversity): {obj2}")
     else:
