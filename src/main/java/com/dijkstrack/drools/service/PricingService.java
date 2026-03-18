@@ -61,7 +61,7 @@ public class PricingService {
         BookingRequest request = new BookingRequest(member, gymClass);
         kieSession.execute(request);
         
-        return request.getValid() != null && request.getValid();
+        return Boolean.TRUE.equals(request.getIsValid());
     }
 
     /**

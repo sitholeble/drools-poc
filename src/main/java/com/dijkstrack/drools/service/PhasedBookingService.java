@@ -52,7 +52,7 @@ public class PhasedBookingService {
             int validationRulesFired = kieSession.fireAllRules();
             System.out.println("Validation rules fired: " + validationRulesFired);
             
-            if (!request.getValid()) {
+            if (!Boolean.TRUE.equals(request.getIsValid())) {
                 System.out.println("Validation failed: " + request.getValidationMessage());
                 System.out.println("Skipping pricing and confirmation phases.");
                 request.setFiredRules(listener.getFiredRules());

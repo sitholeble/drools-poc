@@ -39,7 +39,7 @@ public class BookingController {
         Map<String, Object> response = new HashMap<>();
         response.put("bookingId", processedRequest.getBooking().getBookingId());
         response.put("status", processedRequest.getBooking().getStatus());
-        response.put("isValid", processedRequest.getValid());
+        response.put("isValid", processedRequest.getIsValid());
         response.put("validationMessage", processedRequest.getValidationMessage());
         response.put("originalPrice", processedRequest.getBooking().getOriginalPrice());
         response.put("discount", processedRequest.getBooking().getDiscount());
@@ -94,7 +94,7 @@ public class BookingController {
         response.put("class", gymClass.getClassName());
         response.put("bookingId", processedRequest.getBooking().getBookingId());
         response.put("status", processedRequest.getBooking().getStatus());
-        response.put("isValid", processedRequest.getValid());
+        response.put("isValid", processedRequest.getIsValid());
         response.put("validationMessage", processedRequest.getValidationMessage());
         response.put("originalPrice", processedRequest.getBooking().getOriginalPrice());
         response.put("discount", processedRequest.getBooking().getDiscount());
