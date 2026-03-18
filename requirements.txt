@@ -1,0 +1,11 @@
+# ILP solvers for reco-engine (use one of the following)
+# CPLEX (IBM): pip install docplex cplex   # requires CPLEX installer or community edition
+# Gurobi:      pip install gurobipy        # requires Gurobi license
+# Fallback:    pip install pulp
+
+ortools>=9.0
+docplex>=2.23
+gurobipy>=10.0
+pulp>=2.7
+# For JSON stdin/stdout (optional; stdlib json is enough)
+# requests

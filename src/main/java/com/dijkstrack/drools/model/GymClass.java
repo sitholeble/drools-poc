@@ -7,6 +7,8 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 @Data
 @NoArgsConstructor
@@ -24,6 +26,10 @@ public class GymClass {
     private Double price;
     private Boolean requiresPremium;
     private Boolean isFull;
+    /** Trainer ID for ILP (max sessions per day). */
+    private String trainerId;
+    /** Equipment ID -> units required per session (e.g. "TREADMILL" -> 1). */
+    private Map<String, Integer> equipmentRequired = new HashMap<>();
     private List<Booking> bookings = new ArrayList<>();
     
     public enum ClassCategory {
