@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gym-recommendation-matrix
+data:
+  experiment_matrix.json: |
+    [
+      {
+        "scenarioId": "default_div0_top2",
+        "profile": "default",
+        "maxBudget": 50,
+        "maxClasses": 3,
+        "maxDurationMinutes": 150,
+        "diversityBonusPerCategory": 0.0,
+        "top2Enabled": true
+      },
+      {
+        "scenarioId": "default_div2_top2",
+        "profile": "default",
+        "maxBudget": 50,
+        "maxClasses": 3,
+        "maxDurationMinutes": 150,
+        "diversityBonusPerCategory": 2.0,
+        "top2Enabled": true
+      },
+      {
+        "scenarioId": "mixed_div0_top2",
+        "profile": "mixed",
+        "maxBudget": 50,
+        "maxClasses": 3,
+        "maxDurationMinutes": 150,
+        "diversityBonusPerCategory": 0.0,
+        "top2Enabled": true
+      },
+      {
+        "scenarioId": "mixed_div2_top2",
+        "profile": "mixed",
+        "maxBudget": 50,
+        "maxClasses": 3,
+        "maxDurationMinutes": 150,
+        "diversityBonusPerCategory": 2.0,
+        "top2Enabled": true
+      },
+      {
+        "scenarioId": "cardio_lover_div0_top2",
+        "profile": "cardio_lover",
+        "maxBudget": 50,
+        "maxClasses": 3,
+        "maxDurationMinutes": 150,
+        "diversityBonusPerCategory": 0.0,
+        "top2Enabled": true
+      },
+      {
+        "scenarioId": "cardio_lover_div2_top2",
+        "profile": "cardio_lover",
+        "maxBudget": 50,
+        "maxClasses": 3,
+        "maxDurationMinutes": 150,
+        "diversityBonusPerCategory": 2.0,
+        "top2Enabled": true
+      },
+      {
+        "scenarioId": "budget_focused_div0_top2",
+        "profile": "budget_focused",
+        "maxBudget": 50,
+        "maxClasses": 3,
+        "maxDurationMinutes": 150,
+        "diversityBonusPerCategory": 0.0,
+        "top2Enabled": true
+      },
+      {
+        "scenarioId": "budget_focused_div2_top2",
+        "profile": "budget_focused",
+        "maxBudget": 50,
+        "maxClasses": 3,
+        "maxDurationMinutes": 150,
+        "diversityBonusPerCategory": 2.0,
+        "top2Enabled": true
+      }
+    ]
+

@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gym-recommendation-experiments
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 0
+  completionMode: Indexed
+  completions: 8
+  parallelism: 4
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: runner
+          # TODO: replace with the image built from `Dockerfile.experiments`
+          image: REPLACE_ME_drools-poc-experiments:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow:5000"
+            - name: MLFLOW_EXPERIMENT_NAME
+              value: "gym-recommendation-ilp"
+            - name: EXPERIMENT_MATRIX_FILE
+              value: "/matrix/experiment_matrix.json"
+            - name: LOG_LEVEL
+              value: "INFO"
+          volumeMounts:
+            - name: matrix
+              mountPath: /matrix
+      volumes:
+        - name: matrix
+          configMap:
+            name: gym-recommendation-matrix
+

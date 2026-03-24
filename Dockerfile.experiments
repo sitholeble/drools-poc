@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install only what the experiment runner needs.
+COPY experiments/requirements-mlflow.txt /app/experiments/requirements-mlflow.txt
+RUN pip install --no-cache-dir -r /app/experiments/requirements-mlflow.txt
+
+# Copy the repo (excluding via .dockerignore).
+COPY . /app
+
+ENV PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["python", "experiments/k8s_mlflow_runner.py"]
+

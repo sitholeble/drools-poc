@@ -10,7 +10,14 @@ Features:
 Install: pip install pulp
 """
 
-from pulp import LpMaximize, LpProblem, LpVariable, lpSum, LpStatus
+import argparse
+import json
+import time
+
+from pulp import LpMaximize, LpProblem, LpVariable, PULP_CBC_CMD, lpSum, LpStatus
+
+# Quiet CBC so stdout stays clean for `--output-json` and piping.
+_CBC = PULP_CBC_CMD(msg=False)
 
 # ============================================
 # PROBLEM DATA
@@ -183,7 +190,15 @@ def print_plan(plan_label, recommended, total_price, total_duration, total_score
         print(f"  Diversity: {len(categories_used)} categories -> bonus +{len(categories_used) * DIVERSITY_BONUS}")
 
 
-def get_top2_plans(classes, user_preferences, max_budget, max_classes, max_duration, diversity_bonus):
+def get_top2_plans(
+    classes,
+    user_preferences,
+    max_budget,
+    max_classes,
+    max_duration,
+    diversity_bonus,
+    top2_enabled=TOP2_ENABLED,
+):
     """
     Top-2 plans: solve ILP twice to get best and second-best recommendation sets.
 
@@ -197,20 +212,20 @@ def get_top2_plans(classes, user_preferences, max_budget, max_classes, max_durat
     problem1, x1, _ = build_problem(
         classes, user_preferences, max_budget, max_classes, max_duration, diversity_bonus, exclude_set=None
     )
-    problem1.solve()
+    problem1.solve(_CBC)
     if problem1.status != 1:
         return None, None, None, None, None, None, None, None, None, None
 
     rec1, price1, dur1, score1, cat1 = get_solution(classes, x1, user_preferences)
     obj1 = problem1.objective.value()
 
-    if not TOP2_ENABLED:
+    if not top2_enabled:
         return rec1, price1, dur1, score1, obj1, None, None, None, None, None
 
     problem2, x2, _ = build_problem(
         classes, user_preferences, max_budget, max_classes, max_duration, diversity_bonus, exclude_set=set(rec1)
     )
-    problem2.solve()
+    problem2.solve(_CBC)
     if problem2.status != 1:
         return rec1, price1, dur1, score1, obj1, None, None, None, None, None
 
@@ -219,42 +234,145 @@ def get_top2_plans(classes, user_preferences, max_budget, max_classes, max_durat
     return rec1, price1, dur1, score1, obj1, rec2, price2, dur2, score2, obj2
 
 
-def recommend_for_user(user_id_or_preferences, max_budget=MAX_BUDGET, max_classes=MAX_CLASSES, max_duration=MAX_DURATION):
+def recommend_for_user_detailed(
+    user_id_or_preferences,
+    max_budget=MAX_BUDGET,
+    max_classes=MAX_CLASSES,
+    max_duration=MAX_DURATION,
+    diversity_bonus=DIVERSITY_BONUS,
+    top2_enabled=TOP2_ENABLED,
+):
+    """
+    Run personalized recommendation and return a structured result.
+    """
+    classes = CLASSES
+    user_preferences = get_preferences_for_user(user_id_or_preferences)
+
+    rec1, price1, dur1, score1, obj1, rec2, price2, dur2, score2, obj2 = get_top2_plans(
+        classes,
+        user_preferences,
+        max_budget,
+        max_classes,
+        max_duration,
+        diversity_bonus,
+        top2_enabled=top2_enabled,
+    )
+
+    if rec1 is None:
+        return {
+            "feasible": False,
+            "profile": user_id_or_preferences,
+            "top2Enabled": top2_enabled,
+            "best": None,
+            "second_best": None,
+        }
+
+    best_categories = list({classes[c]["category"] for c in rec1})
+    best = {
+        "recommendedClassIds": rec1,
+        "objectiveValue": obj1,
+        "totalPrice": price1,
+        "totalDurationMinutes": dur1,
+        "satisfactionScore": score1,
+        "categoriesIncluded": best_categories,
+    }
+
+    if rec2 is None:
+        return {
+            "feasible": True,
+            "profile": user_id_or_preferences,
+            "top2Enabled": top2_enabled,
+            "best": best,
+            "second_best": None,
+        }
+
+    second_categories = list({classes[c]["category"] for c in rec2})
+    second_best = {
+        "recommendedClassIds": rec2,
+        "objectiveValue": obj2,
+        "totalPrice": price2,
+        "totalDurationMinutes": dur2,
+        "satisfactionScore": score2,
+        "categoriesIncluded": second_categories,
+    }
+
+    return {
+        "feasible": True,
+        "profile": user_id_or_preferences,
+        "top2Enabled": top2_enabled,
+        "best": best,
+        "second_best": second_best,
+    }
+
+
+def recommend_for_user(
+    user_id_or_preferences,
+    max_budget=MAX_BUDGET,
+    max_classes=MAX_CLASSES,
+    max_duration=MAX_DURATION,
+    diversity_bonus=DIVERSITY_BONUS,
+    top2_enabled=TOP2_ENABLED,
+):
     """
     Run personalized recommendation for one user. Returns top-2 plans (best and second-best).
 
     Args:
         user_id_or_preferences: profile name (str) from USER_PROFILES, or dict of class_name -> score, or None for default.
         max_budget, max_classes, max_duration: optional constraint overrides.
+        diversity_bonus: objective diversity bonus per selected category.
+        top2_enabled: whether to compute best + second-best.
 
     Returns:
         (plan1_list, plan1_score, plan2_list, plan2_score) or (plan1, s1, None, None) if no second plan.
     """
     classes = CLASSES
     user_preferences = get_preferences_for_user(user_id_or_preferences)
-    result = get_top2_plans(classes, user_preferences, max_budget, max_classes, max_duration, DIVERSITY_BONUS)
+    result = get_top2_plans(
+        classes,
+        user_preferences,
+        max_budget,
+        max_classes,
+        max_duration,
+        diversity_bonus,
+        top2_enabled=top2_enabled,
+    )
     rec1, price1, dur1, score1, obj1, rec2, price2, dur2, score2, obj2 = result
     if rec1 is None:
         return None, None, None, None
     return rec1, score1, rec2, score2
 
 
-def run_recommendation():
-    """Build model, solve for plan 1 (best), then plan 2 (second-best, excluding plan 1), and print both."""
+def run_recommendation(
+    profile=ACTIVE_USER,
+    max_budget=MAX_BUDGET,
+    max_classes=MAX_CLASSES,
+    max_duration=MAX_DURATION,
+    diversity_bonus=DIVERSITY_BONUS,
+    top2_enabled=TOP2_ENABLED,
+):
+    """Solve recommendation ILP and print both (if top-2 enabled)."""
     classes = CLASSES
-    user_preferences = get_preferences_for_user(ACTIVE_USER)
-    user_label = ACTIVE_USER if isinstance(ACTIVE_USER, str) else ("custom" if user_preferences else "default")
+    user_preferences = get_preferences_for_user(profile)
+    user_label = profile if isinstance(profile, str) else ("custom" if user_preferences else "default")
 
     print("=" * 60)
     print("ILP RECOMMENDATION - Personalization + Diversity + Top-2 Plans")
     print("=" * 60)
-    print(f"\nBudget: ${MAX_BUDGET}  Max classes: {MAX_CLASSES}  Max duration: {MAX_DURATION} min")
-    print(f"Diversity: +{DIVERSITY_BONUS} per category in plan (categories: {', '.join(get_categories(CLASSES))})")
+    print(f"\nBudget: ${max_budget}  Max classes: {max_classes}  Max duration: {max_duration} min")
+    print(
+        f"Diversity: +{diversity_bonus} per category in plan (categories: {', '.join(get_categories(CLASSES))})"
+    )
     print("User (personalization): " + user_label)
     print("Top-2: best plan, then second-best (exclude first set)")
 
     rec1, price1, dur1, score1, obj1, rec2, price2, dur2, score2, obj2 = get_top2_plans(
-        classes, user_preferences, MAX_BUDGET, MAX_CLASSES, MAX_DURATION, DIVERSITY_BONUS
+        classes,
+        user_preferences,
+        max_budget,
+        max_classes,
+        max_duration,
+        diversity_bonus,
+        top2_enabled=top2_enabled,
     )
 
     if rec1 is None:
@@ -278,4 +396,36 @@ def run_recommendation():
 
 
 if __name__ == "__main__":
-    run_recommendation()
+    parser = argparse.ArgumentParser(description="Gym recommendation ILP experiment (PuLP).")
+    parser.add_argument("--profile", default=ACTIVE_USER, help="Profile key in USER_PROFILES (or 'default').")
+    parser.add_argument("--max-budget", type=float, default=MAX_BUDGET)
+    parser.add_argument("--max-classes", type=int, default=MAX_CLASSES)
+    parser.add_argument("--max-duration", type=float, default=MAX_DURATION)
+    parser.add_argument("--diversity-bonus", type=float, default=DIVERSITY_BONUS)
+    parser.set_defaults(top2_enabled=TOP2_ENABLED)
+    parser.add_argument("--no-top2", dest="top2_enabled", action="store_false", help="Only compute plan 1.")
+    parser.add_argument("--output-json", action="store_true", help="Print machine-readable JSON to stdout.")
+
+    args = parser.parse_args()
+
+    if args.output_json:
+        t0 = time.perf_counter()
+        result = recommend_for_user_detailed(
+            user_id_or_preferences=args.profile,
+            max_budget=args.max_budget,
+            max_classes=args.max_classes,
+            max_duration=args.max_duration,
+            diversity_bonus=args.diversity_bonus,
+            top2_enabled=args.top2_enabled,
+        )
+        result["runtimeMs"] = int((time.perf_counter() - t0) * 1000)
+        print(json.dumps(result, indent=0))
+    else:
+        run_recommendation(
+            profile=args.profile,
+            max_budget=args.max_budget,
+            max_classes=args.max_classes,
+            max_duration=args.max_duration,
+            diversity_bonus=args.diversity_bonus,
+            top2_enabled=args.top2_enabled,
+        )

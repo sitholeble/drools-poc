@@ -1,0 +1,23 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gym-recommendation-analysis
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: analysis
+          # TODO: replace with the image you build from `Dockerfile.experiments`
+          image: REPLACE_ME_drools-poc-experiments:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "experiments/mlflow_performance_analysis.py"]
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow:5000"
+            - name: MLFLOW_EXPERIMENT_NAME
+              value: "gym-recommendation-ilp"
+          args: ["--output-csv", "/tmp/analysis_results.csv"]
+
